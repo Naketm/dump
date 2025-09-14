@@ -4,15 +4,21 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local animations = ReplicatedStorage:WaitForChild("Animations")
 
+export type Stand = {
+	name: string,
+	model: Model,
+	owner: Player,
+}
+
 local Stand = {}
 
-local function findLongestLifetime(cache)
+local function findLongestLifetime(cache): ParticleEmitter | number
 	local longest_particle = nil
 	local maxLifeTime = 0
 	
 	for _, particle in cache do
 		local currentLifeTime = particle.Lifetime.Max
-		if currentLifeTime > maxLifeTime then
+		if currentLifeTime > maxLifeTime and particle.Parent ~= SpawnVFX then
 			maxLifeTime = currentLifeTime
 			longest_particle = particle
 		end
@@ -24,8 +30,9 @@ end
  -- these are for cacheing idk just seemed fun
 local cache = {}
 
-function Stand.new(name: string, model: Model, owner: Player)
+function Stand.new(name: string, model: Model, owner: Player): Stand
 	local self = setmetatable({}, {__index = Stand})
+	model.Name = name .. owner.UserId
 	
 	self.name = name
 	self.model = model
@@ -66,7 +73,7 @@ function Stand:setTransparency(target: number, duration: number)
 	addToCache(self, "transparent", transparent_parts)
 end
 
-function Stand:enableEffects()
+function Stand:enableEffects(): {}
 	local cache = getFromCache(self, "particles")
 	local particles = {}
 	
@@ -124,7 +131,7 @@ function Stand:clearCache()
 	cache[self.owner.UserId] = {}
 end
 
-function Stand:summon(offset: Vector3)
+function Stand:summon(offset: Vector3, transparency: number, speed: number)
 	
 	local root = self.owner.Character and self.owner.Character:FindFirstChild("HumanoidRootPart")
 	if not root then return end
@@ -147,6 +154,8 @@ function Stand:summon(offset: Vector3)
 	standRoot.Anchored = false
 	
 	task.wait()
+	
+	self:setTransparency(0, 0.7)
 end
 
 function Stand:stopFollow()
@@ -156,6 +165,7 @@ function Stand:stopFollow()
 		weld:Destroy()
 	end
 	
+	self.model.Parent = ReplicatedStorage
 end
 
 function Stand:playAnimation(animation: Animation, looped: boolean)
@@ -166,8 +176,6 @@ function Stand:playAnimation(animation: Animation, looped: boolean)
 	Anim:Play()
 	return Anim
 end
-
-
 
 
 function Stand:Enable()
@@ -181,8 +189,7 @@ function Stand:Enable()
 	
 	
 	self:enableEffects()
-	self:setTransparency(0, 0.7)
-	self:summon(offset)
+	self:summon(offset, 0, 0.7)
 
 	
 	local spawn_anim = self:playAnimation(Spawn_ID, false)
@@ -201,15 +208,23 @@ function Stand:Enable()
 end
 
 function Stand:Disable()
+	local Spawn_VFX = ReplicatedStorage.VFX.SpawnVFX:Clone()
+	local Spawn_ID = animations.Spawn:Clone()
+	Spawn_VFX.Parent = self.model.clothe.T1
+	
 	local disabled_particles = self:disableEffects()
 	local particle, maxlen = findLongestLifetime(disabled_particles)
 	
-	self:setTransparency(1, 0.5)
-	task.wait(maxlen)
+	local spawn_anim = self:playAnimation(Spawn_ID, false)
+	spawn_anim:GetMarkerReachedSignal("StartAnim2"):Connect(function(param)
+		self:setTransparency(1, 0.5)
+		self:emitVfx(Spawn_VFX:GetChildren(), 5)
+	end)
 	
-	print(self.model)
+	task.wait(1)
 	self:stopFollow()
 end
 
 
 return Stand
+
